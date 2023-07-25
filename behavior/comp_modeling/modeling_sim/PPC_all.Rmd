@@ -1,0 +1,188 @@
+---
+title: "PPC analysis"
+author: "Chunliang Feng (SCNU)"
+date: June, 23, 2023
+output:
+  html_document:
+    code_folding: hide
+---
+```{r setup, include=FALSE}
+#rm(list=ls())
+require('knitr') 
+opts_chunk$set(tidy = FALSE, warning = FALSE, message = FALSE, cache = FALSE)
+
+#load libraries and functions
+suppressMessages(library('tidyverse')) # to organize data
+suppressMessages(library('rstan')) # for model fiting, using the sampling function
+rstan_options(auto_write = TRUE) #which allows you to automatically save a bare version of a compiled Stan program to the hard disk so that it does not need to be recompiled (unless you change it): https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started
+suppressMessages(library('loo'))   # for calculating looic and waic
+suppressMessages(library('data.table')) # to read data as data.table rather than data.frame.
+suppressMessages(library('bayesplot')) # to plot various figures for model checking
+suppressMessages(library('R.matlab')) # to save out .mat files
+suppressMessages(library('hypr')) # transfer hypothesis matrix to contrast matrix.
+
+
+#The following functions are adapted from the hBayesDM package (Ahn et al., 2017): Ahn, W. Y., Haines, N., & Zhang, L. (2017). Revealing neurocomputational mechanisms of reinforcement learning and decision-making with the hBayesDM package. Computational Psychiatry, 1, 24.
+source('./supp_funcs/prepro.R') #preparing the data for the stan:                         change for each project: IMPORTANT!!!!!!!!!!!!!!!!!
+source('./supp_funcs/extract_ic.R') #extract looic and waic of the model:                 no chnage needed
+source('./supp_funcs/printfit.R') #print looic and waic of the model and their weights:   no change needed
+
+options(max.print = 99999) # for ploting all results of fitted model
+```
+
+
+
+run the analyses 5o times
+```{r 50 times}
+real_IndPars <- read.csv('IndPars_fit_vm_ad.csv') #load the real parameters
+
+data_path  <- paste0(getwd(),'/','sim_data') # path of the simulated data
+data_files <- list.files(data_path,pattern = "^sim_data_vm_ad") # file names of the simulated data
+
+coefs      <- data.frame('PPC_subs'=rep(-99,length(data_files)),'PPC_trial'=rep(-99,length(data_files)),'alpha'=rep(-99,length(data_files)),'omega_a'=rep(-99,length(data_files)),'omega_i'=rep(-99,length(data_files)),'tau'=rep(-99,length(data_files)))
+
+for (ns in 1:length(data_files)){
+  
+  
+  #### step01: load the data
+  sim_data   <- fread(file=paste0(data_path,'/',data_files[ns])) #load as data.table
+  sim_data   <- subset(sim_data,select = -c(9)) #delete a column,diff from delete a col from data.frame
+  
+  
+  
+  ### step02: data describing.
+  # 1. Target variable: (1) choice_category: 1,2,3,4, corresponding to 0,2,4,6
+  # 2. Predictor variable:  (1) xd (money to the proposer); (2)xv(money to participants/agents).
+  # 3. supporting variables: subid (n=27), trial(1:80),cond(1=amb;2=ide),choice: decisions correspond to 0,2,4,or 6.
+  
+  
+  
+  ### step03: run the correlation at the trial and participant level
+  ##3.1 participant level
+  sim_data_subs <- sim_data %>% 
+  group_by(subid) %>% 
+  summarise(real_choice = mean(choice_real,na.rm =T),sim_choice=mean(choice,na.rm =T)) %>% ungroup()
+  coefs$PPC_subs[ns] <- cor.test(sim_data_subs$real_choice,sim_data_subs$sim_choice)$estimate
+  
+  ###3.2 trial level
+  sim_data_trial <- sim_data %>% 
+  group_by(trial) %>% 
+  summarise(real_choice = mean(choice_real,na.rm =T),sim_choice=mean(choice,na.rm =T)) %>% ungroup()
+  coefs$PPC_trial[ns] <- cor.test(sim_data_trial$real_choice,sim_data_trial$sim_choice)$estimate
+  
+  
+  
+  
+  ### step04: preparing data for stan
+  colnames_sim_data <- colnames(sim_data)
+  
+  subjs    <- NULL   # List of unique subjects (1D)
+  n_subj   <- NULL   # Total number of subjects (0D)
+  t_subjs  <- NULL   # Number of trials per subject (2D or 1D)
+  t_max    <- NULL   # Maximum number of trials across all subjects (0D)
+  
+  .N       <- NULL
+  
+  DT_trials <- sim_data[, .N, by = c('subid')] #get the number of trials for each sub, data.table
+  
+  subjs     <- DT_trials$subid    # sub IDs
+  n_subj    <- length(subjs)      # no. of subs
+  t_subjs   <- DT_trials$N # number of trials for each sub
+  t_max     <- max(t_subjs) # maximal no. of trials across all subs.
+  
+  gen_file <- 0 #whether or not generate a data file, only generating for main analysis, not for simulation analysis
+  
+  general_info        <- list(subjs, n_subj, t_subjs, t_max,gen_file)
+  names(general_info) <- c('subjs', 'n_subj', 't_subjs', 't_max','gen_file')
+  
+  data_list <- prepro_func(sim_data,general_info)  # get the data ready for stan; MUST check the 'func01_prepro.R' file in the 'supp_funcs' directory!!!!!!!
+  
+
+
+
+
+
+  ### step05: run the model
+  ncore <- 3
+  options(mc.cores = ncore) #adapted from hBayesDM_model.R
+  rstan_options(javascript=FALSE) # see also: https://discourse.mc-stan.org/t/error-in-open-connection-con-open-mode-timeout-was-reached-github-com/23162/6
+  
+  #model 5, the  The vicarious model,additive version. Four parameters: alpha, omega_a, omega_i, and tau
+  pars_vm_ad <- c('mu_alpha','mu_omega_a','mu_omega_i','mu_tau','sigma','alpha','omega_a','omega_i','tau','log_lik')
+  fit_vm_ad <- stan(file=paste0(getwd(),'/stan_model/m05_ite_vm_ad.stan'), data=data_list,
+                    pars    = pars_vm_ad,
+                    chains  = 3,
+                    iter    = 4000,
+                    warmup  = 2000,
+                    thin    = 1,
+                    control = list(adapt_delta   = 0.99,
+                                   stepsize      = 1,
+                                   max_treedepth = 18))
+  
+  
+  save(fit_vm_ad,file=paste0('./stan_output/fit_vm_ad_sim',sprintf("%02d", ns),'.RData'))
+  
+  
+  
+  
+  
+  ### step06: individual paramters
+  parVals <- rstan::extract(fit_vm_ad, permuted = TRUE)
+  
+  # Define measurement of individual parameters
+  indPars <- "mean" #extracting mean of parameters
+  measure_indPars <- switch(indPars, mean = mean, median = median, mode = estimate_mode)
+  which_indPars <- c('alpha','omega_a','omega_i','tau') #vectors
+  
+  multp_which_indPars <- NULL  # matrix
+  
+  # Measure all individual parameters (per subject)
+  allIndPars <- as.data.frame(array(NA, c(n_subj, length(which_indPars))))
+  m_allIndPars <- as.data.frame(array(NA, c(n_subj, 50))) #'50' here is an arbitrary value, just to make sure that the number of parameters are below this value.
+  m_names  <- rep(NULL,50)
+  for (i in 1:n_subj) {
+    
+    allIndPars[i, ] <- mapply(function(x) measure_indPars(parVals[[x]][, i]), which_indPars)
+    
+    if (length(multp_which_indPars)>0){  # for parameters in the matrix form
+      count <-0
+      for (nm in 1: length(multp_which_indPars)){
+        for (ds in 1:dim(parVals[[multp_which_indPars[nm]]])[3]){
+          count <- count + 1
+          m_allIndPars[i, count] <- sapply(list(parVals[[multp_which_indPars[nm]]][, i,ds]),function(x) measure_indPars(x))
+          m_names[count] <- paste0(multp_which_indPars[nm],ds)
+        }
+      }
+    }
+  }
+  
+  if (length(multp_which_indPars)>0){
+    m_allIndPars <- m_allIndPars[,1:count]
+    m_allIndPars <- as.data.frame(m_allIndPars)
+    m_names      <- m_names[1:count]
+    
+    allIndPars <- cbind(subjs, allIndPars,m_allIndPars)
+    colnames(allIndPars) <- c("subjid", which_indPars,m_names)
+  } else {
+    allIndPars <- cbind(subjs, allIndPars)
+    colnames(allIndPars) <- c("subjid", which_indPars) 
+  }
+  
+  
+  write.csv(allIndPars,file=paste0('./sim_IndPars/IndPars_fit_vm_ad_sim',sprintf("%02d", ns),'.csv'),row.names = FALSE)
+  
+  
+  ### step07: run the correlation between simulated parameters and real parameters
+  coefs$alpha[ns]   <- cor.test(real_IndPars$alpha,allIndPars$alpha)$estimate
+  coefs$omega_a[ns] <- cor.test(real_IndPars$omega_a,allIndPars$omega_a)$estimate
+  coefs$omega_i[ns] <- cor.test(real_IndPars$omega_i,allIndPars$omega_i)$estimate
+  coefs$tau[ns]     <- cor.test(real_IndPars$tau,allIndPars$tau)$estimate
+  
+}
+
+
+write.csv(coefs,file='./coefs.csv',row.names = FALSE)
+
+
+```
+
