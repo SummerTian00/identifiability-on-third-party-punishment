@@ -1,0 +1,126 @@
+---
+title: "mediation"
+author: "cfeng"
+date: 06/08/2019
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library}
+suppressMessages(library('readxl'))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("gridExtra"))
+suppressMessages(library("cowplot"))
+suppressMessages(library("ggpubr"))
+suppressMessages(library('reshape2'))
+
+```
+
+
+```{r load data}
+## for more info, please see below links:
+#https://data.library.virginia.edu/introduction-to-mediation-analysis/
+
+#https://github.com/paolotof/rVisualizations/blob/master/multipleMediationLavaanExample.R
+
+#https://paolotoffanin.wordpress.com/2017/05/06/multiple-mediator-analysis-with-lavaan/comment-page-1/
+
+#https://paolotoffanin.wordpress.com/2017/06/04/multiple-mediation-example/
+
+medata <- read.csv('mediation_data.csv',header=TRUE)
+
+```
+
+
+```{r med analysis}
+suppressMessages(library('mediation'))
+punish ~ b1*aro + b2*resp + c*SDO
+#total effSDOt: X-Y
+model.0 <- lm(punish ~ SDO, medata)
+summary(model.0)
+
+#X-M
+model.M1 <- lm(aro ~ SDO, medata)
+summary(model.M1)
+
+model.M2 <- lm(resp ~ SDO, medata)
+summary(model.M2)
+
+#X+M-Y
+model.Y1 <- lm(punish ~ SDO + aro, medata)
+summary(model.Y1)
+
+model.Y2 <- lm(punish ~ SDO + resp, medata)
+summary(model.Y2)
+
+#do the bootstrap
+results1 <- mediate(model.M1, model.Y1, treat='SDO', mediator='aro',
+                   boot=TRUE, sims=5000)
+summary(results1)
+
+
+results2 <- mediate(model.M2, model.Y2, treat='SDO', mediator='resp',
+                   boot=TRUE, sims=5000)
+summary(results2)
+
+```
+
+
+```{r med analysis for computational parameters}
+suppressMessages(library('mediation'))
+
+### ACME stands for Average Causal Mediation Effects
+### ADE stands for Average Direct Effects
+### Total Effect is a sum of a mediation (indirect) effect and a direct effect
+
+######################################SDO##########################################
+punish ~ b1*omega +c*SDO
+#total effSDOt: X-Y
+model.0 <- lm(punish ~ SDO, medata)
+summary(model.0)
+
+#X-M
+model.M1 <- lm(omega ~ SDO, medata)
+summary(model.M1)
+
+
+#X+M-Y
+model.Y1 <- lm(punish ~ SDO + omega, medata)
+summary(model.Y1)
+
+
+#do the bootstrap
+results1 <- mediate(model.M1, model.Y1, treat='SDO', mediator='omega',
+                   boot=TRUE, sims=5000)
+summary(results1)
+
+
+#################################empathic concern###############################
+punish ~ b1*omega +c*EC
+#total effECt: X-Y
+model.0 <- lm(punish ~ EC, medata)
+summary(model.0)
+
+#X-M
+model.M1 <- lm(omega ~ EC, medata)
+summary(model.M1)
+
+
+#X+M-Y
+model.Y1 <- lm(punish ~ EC + omega, medata)
+summary(model.Y1)
+
+
+#do the bootstrap
+results2 <- mediate(model.M1, model.Y1, treat='EC', mediator='omega',
+                   boot=TRUE, sims=5000)
+summary(results2)
+
+```
+
+
