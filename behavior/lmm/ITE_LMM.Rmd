@@ -1,0 +1,50 @@
+---
+title: "ITE_LMM"
+author: "cfeng"
+date: Jan, 20, 2020
+output:
+  html_document:
+    code_folding: hide
+---
+```{r setup, include=FALSE}
+rm(list=ls())
+require("knitr") 
+opts_chunk$set(tidy = FALSE, warning = FALSE, message = FALSE, cache = FALSE)
+#load libraries
+suppressMessages(library('lmerTest'))
+suppressMessages(library("reshape2"))
+suppressMessages(library('emmeans')) 
+suppressMessages(library("interactions"))
+```
+
+
+```{r load data}
+data <- read.csv(file="all_data.csv",header=TRUE)
+data[,"unfair"] <- data[,"xd"] - data[,"xv"] #cacluate the unfairness
+data[,"conds"]   <- 'amb'
+data[data$cond==2,"conds"] <- "ide"
+data$conds <- factor(data$conds)
+data$subjid <- factor(data$subjid)
+```
+
+
+```{r fit the model}
+fit     <- lmer(data = data,choice ~ unfair * conds + (1 +  unfair:conds|subjid))
+#par_amb <- coef(fit)$subjid$`unfair:condsamb`
+#par_ide <- coef(fit)$subjid$`unfair:condside`
+#subs    <- levels(data$subjid)
+#pars    <- data.frame(subs,par_amb,par_ide)
+#write.csv(pars,file='para_estimates.csv',row.names = F)
+
+
+summary(fit)  #check the fixed effects
+anova(fit)  #check the main and interaction effects
+
+
+```
+```{r post-hoc comparisons}
+#emmeans(fit, pairwise~conds|unfair) 
+sim_slopes(model=fit,pred=unfair,modx=conds)
+
+```
+
