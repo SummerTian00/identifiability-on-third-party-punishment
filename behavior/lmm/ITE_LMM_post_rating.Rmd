@@ -11,28 +11,37 @@ rm(list=ls())
 require("knitr") 
 opts_chunk$set(tidy = FALSE, warning = FALSE, message = FALSE, cache = FALSE)
 #load libraries
+suppressMessages(library("lme4"))  # to fit data with mixed models
 suppressMessages(library('lmerTest'))
 suppressMessages(library("reshape2"))
 suppressMessages(library('emmeans')) 
 suppressMessages(library("interactions"))
+suppressMessages(library("afex"))  # using 'all_fit' to find appropriate optimizer; and 'mixed' for significance test
 ```
 
 
 ```{r load data}
-data <- read.csv(file="all_data_post_rating_and_decisions.csv",header=TRUE)
-data <- data[data$RT>0,]
+data <- read.csv(file="all_data_post_rating.csv",header=TRUE)
 data[,"unfair"] <- data[,"xd"] - data[,"xv"] #cacluate the unfairness
 data[,"conds"]   <- 'amb'
 data[data$cond==2,"conds"] <- "ide"
 data$conds <- factor(data$conds)
 data$subjid <- factor(data$subjid)
+
+data$unfair <- as.numeric(data$unfair)
+data$val <- as.numeric(data$val)
+data$aro <- as.numeric(data$aro)
+data$resp <- as.numeric(data$resp)
+data$fair <- as.numeric(data$fair)
+
 ```
+
 
 
 ```{r fit the model val}
 fit = lmer(data = data,val~ unfair * conds + (1 +  unfair:conds|subjid))
-summary(fit)  #check the fixed effects
-anova(fit)  #check the main and interaction effects
+#summary(fit)  #check the fixed effects
+#anova(fit)  #check the main and interaction effects
 
 # par_val_amb      <- coef(fit)$subjid$`unfair:condsamb`
 # par_val_ide      <- coef(fit)$subjid$`unfair:condside`
@@ -40,40 +49,73 @@ anova(fit)  #check the main and interaction effects
 # subs             <- levels(data$subjid)
 # pars             <- data.frame(subs,par_val_amb,par_val_ide,par_val_ideVSamb)
 
+
+fit.sig <- mixed(val~ unfair * conds + (1 +  unfair:conds|subjid), 
+                  data=data, method='LRT', # could be 'PB'
+                       check_contrasts = F)
+
+fit.sig
+
+
 ```
 
 ```{r fit the model aro}
 fit = lmer(data = data,aro ~ unfair * conds + (1 +  unfair:conds|subjid))
-summary(fit)  #check the fixed effects
-anova(fit)  #check the main and interaction effects
+#summary(fit)  #check the fixed effects
+#anova(fit)  #check the main and interaction effects
 
 # pars$par_aro_amb      <- coef(fit)$subjid$`unfair:condsamb`
 # pars$par_aro_ide      <- coef(fit)$subjid$`unfair:condside`
 # pars$par_aro_ideVSamb <- pars$par_aro_ide - pars$par_aro_amb
+
+
+fit.sig <- mixed(aro ~ unfair * conds + (1 +  unfair:conds|subjid), 
+                  data=data, method='LRT', # could be 'PB'
+                       check_contrasts = F)
+
+fit.sig
 
 ```
 
 
 ```{r fit the model resp}
 fit = lmer(data = data,resp ~ unfair * conds + (1 +  unfair:conds|subjid))
-summary(fit)  #check the fixed effects
-anova(fit)  #check the main and interaction effects
+#summary(fit)  #check the fixed effects
+#anova(fit)  #check the main and interaction effects
 # 
 # pars$par_resp_amb      <- coef(fit)$subjid$`unfair:condsamb`
 # pars$par_resp_ide      <- coef(fit)$subjid$`unfair:condside`
 # pars$par_resp_ideVSamb <- pars$par_resp_ide - pars$par_resp_amb
+
+
+fit.sig <- mixed(resp ~ unfair * conds + (1 +  unfair:conds|subjid), 
+                  data=data, method='LRT', # could be 'PB'
+                       check_contrasts = F)
+
+fit.sig
+
+
 ```
 
 
 ```{r fit the model fair}
 fit = lmer(data = data,fair ~ unfair * conds + (1 +  unfair:conds|subjid))
-summary(fit)  #check the fixed effects
-anova(fit)  #check the main and interaction effects
+#summary(fit)  #check the fixed effects
+#anova(fit)  #check the main and interaction effects
 
 # pars$par_fair_amb      <- coef(fit)$subjid$`unfair:condsamb`
 # pars$par_fair_ide      <- coef(fit)$subjid$`unfair:condside`
 # pars$par_fair_ideVSamb <- pars$par_fair_ide - pars$par_fair_amb
 # 
 # write.csv(pars,file='para_estimates_postratings.csv',row.names = F)
+
+
+
+fit.sig <- mixed(fair ~ unfair * conds + (1 +  unfair:conds|subjid), 
+                  data=data, method='LRT', # could be 'PB'
+                       check_contrasts = F)
+
+fit.sig
+
 ```
 

@@ -11,10 +11,12 @@ rm(list=ls())
 require("knitr") 
 opts_chunk$set(tidy = FALSE, warning = FALSE, message = FALSE, cache = FALSE)
 #load libraries
+suppressMessages(library("lme4"))  # to fit data with mixed models
 suppressMessages(library('lmerTest'))
 suppressMessages(library("reshape2"))
 suppressMessages(library('emmeans')) 
 suppressMessages(library("interactions"))
+suppressMessages(library("afex"))  # using 'all_fit' to find appropriate optimizer; and 'mixed' for significance test
 ```
 
 
@@ -25,6 +27,8 @@ data[,"conds"]   <- 'amb'
 data[data$cond==2,"conds"] <- "ide"
 data$conds <- factor(data$conds)
 data$subjid <- factor(data$subjid)
+data$unfair <- as.numeric(data$unfair)
+data$choice <- as.numeric(data$choice)
 ```
 
 
@@ -37,14 +41,23 @@ fit     <- lmer(data = data,choice ~ unfair * conds + (1 +  unfair:conds|subjid)
 #write.csv(pars,file='para_estimates.csv',row.names = F)
 
 
-summary(fit)  #check the fixed effects
-anova(fit)  #check the main and interaction effects
+#summary(fit)  #check the fixed effects
+#anova(fit)  #check the main and interaction effects
+
+
+fit.sig <- mixed(choice ~ unfair * conds + (1 +  unfair:conds|subjid), 
+                  data=data, method='LRT', # could be 'PB'
+                       check_contrasts = F)
+
+fit.sig
 
 
 ```
 ```{r post-hoc comparisons}
 #emmeans(fit, pairwise~conds|unfair) 
-sim_slopes(model=fit,pred=unfair,modx=conds)
+sl <- sim_slopes(model=fit,pred=unfair,modx=conds)
+
+sl
 
 ```
 
